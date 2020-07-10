@@ -1,0 +1,106 @@
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HColumnDescriptor;
+import org.apache.hadoop.hbase.HTableDescriptor;
+import org.apache.hadoop.hbase.TableDescriptors;
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.*;
+import org.apache.hadoop.hbase.client.coprocessor.AggregationClient;
+import org.apache.hadoop.hbase.client.coprocessor.LongColumnInterpreter;
+import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos;
+
+import org.apache.hadoop.hbase.snapshot.SnapshotInfo;
+import org.apache.hadoop.hbase.util.Bytes;
+
+import java.io.IOException;
+import java.util.*;
+
+public class SnapshotValidator {
+    private Configuration conf;
+    private Admin hbaseAdmin;
+    private Connection connection;
+
+    public SnapshotValidator(Connection connection, Admin hbaseAdmin, Configuration conf) {
+        this.connection = connection;
+        this.hbaseAdmin = hbaseAdmin;
+        this.conf = conf;
+    }
+
+
+    public boolean isValidSnapshot(HBaseProtos.SnapshotDescription snapDescription, Map<String, TableName> tbMap) throws Throwable {
+        SnapshotInfo.SnapshotStats stat= SnapshotInfo.getSnapshotStats(conf, snapDescription);
+        TableName tn = tbMap.get(snapDescription.getTable());
+//        String st = snapDescription.getTable() + "_Temp";
+        TableName tnTemp = TableName.valueOf(snapDescription.getTable()+"_Temp");
+        long original = -1L;
+        long cloned = -2L;
+        if (!stat.isSnapshotCorrupted()){
+            this.hbaseAdmin.cloneSnapshot(snapDescription.getName(), tnTemp);
+            System.out.println("Original table name native count");
+            long startTime = System.nanoTime();
+            original = countRows(tn);
+            System.out.println(System.nanoTime() - startTime);
+            System.out.println(original);
+            System.out.println("Temp table name native count");
+            long startTimet = System.nanoTime();
+            cloned = countRows(tnTemp);
+            System.out.println(System.nanoTime() - startTimet);
+            System.out.println(cloned);
+            System.out.println("Temp table name aggregative count");
+            long startTimeTT = System.nanoTime();
+            original = countRowsAgg(tn);
+            System.out.println(System.nanoTime() - startTimeTT);
+            System.out.println(original);
+            System.out.println("Temp table name aggregative count");
+            long startTime1 = System.nanoTime();
+            cloned = countRowsAgg(tnTemp);
+            System.out.println(System.nanoTime() - startTime1);
+            System.out.println(cloned);
+            hbaseAdmin.disableTable(tnTemp);
+            hbaseAdmin.deleteTable(tnTemp);
+        }
+
+
+        return original==cloned;
+    }
+
+    public long countRows(TableName table) throws IOException{
+        Scan scan = new Scan();
+//        scan.setTimeRange(0, 1593712549572L);
+//            Table table = conn.getTable(TableName.valueOf("test"));
+
+        Table ta = connection.getTable(table);
+        ResultScanner scanner = ta.getScanner(scan);
+        long i =0L;
+        // Reading values from scan result
+        for (Result result = scanner.next(); result != null; result = scanner.next()){
+            i++;
+//            System.out.println("Found row : " + result);
+        }
+
+        //closing the scanner
+        scanner.close();
+        return i;
+    }
+
+    public long countRowsAgg(TableName table) throws Throwable{
+        HTableDescriptor desc = hbaseAdmin.getTableDescriptor(table);
+        List<HColumnDescriptor> cols = Arrays.asList(desc.getColumnFamilies());
+        String columnName = cols.get(0).getNameAsString();
+
+        Scan scaner = new Scan();
+//        scan.setTimeRange(0, 1593712549572L);
+//            scan.setTimeRange(0, 1593712549572L);
+//            Table table = conn.getTable(TableName.valueOf("test"));
+//            HTable table = new HTable(config, t.getNameAsString());
+//            ResultScanner scanner = table.getScanner(scan);
+
+        AggregationClient aggregationClient = new AggregationClient(conf);
+//            Scan scan = new Scan();
+        byte[] CF = Bytes.toBytes(columnName);
+        scaner.addFamily(CF);
+        long rowCount = aggregationClient.rowCount(table, new LongColumnInterpreter(), scaner);
+        System.out.println(rowCount);
+
+        return rowCount;
+    }
+}
