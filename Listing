@@ -1,0 +1,7 @@
+    public List<HBaseProtos.SnapshotDescription> listSnapshots(String instancePattern) throws IOException {
+        return admin.listSnapshots().stream().filter(t->t.getName().contains(instancePattern)).collect(Collectors.toList());
+    }
+
+    public List<TableName> listTables(String instancePattern) throws IOException{
+        return Arrays.asList(admin.listTableNames()).stream().filter(t->t.getNameAsString().contains(instancePattern)).collect(Collectors.toList());
+    }
