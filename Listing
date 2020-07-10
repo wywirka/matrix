@@ -5,3 +5,15 @@
     public List<TableName> listTables(String instancePattern) throws IOException{
         return Arrays.asList(admin.listTableNames()).stream().filter(t->t.getNameAsString().contains(instancePattern)).collect(Collectors.toList());
     }
+
+
+
+ist<HBaseProtos.SnapshotDescription> instanceSnaps = il.listSnapshots(instance);
+        System.out.println(instanceSnaps.size());
+        List<TableName> instanceTables = il.listTables(instance);
+        System.out.println(instanceTables.size());
+        Map<String, TableName> tableMap = instanceTables.stream().collect(Collectors.toMap(TableName::getNameAsString, Function.identity()));
+        for(HBaseProtos.SnapshotDescription snap: instanceSnaps){
+            boolean validation = snapValid.isValidSnapshot(snap, tableMap);
+            System.out.println(validation);
+        }
